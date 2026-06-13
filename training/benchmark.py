@@ -62,6 +62,13 @@ class BenchmarkTrainer(Trainer):
             self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.args.learning_rate)
         return self.optimizer
 
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        # Newer HF Trainer passes num_items_in_batch, but our models don't accept it.
+        inputs.pop("num_items_in_batch", None)
+        outputs = model(**inputs)
+        loss = outputs.loss
+        return (loss, outputs) if return_outputs else loss
+
 def get_real_dataset(seq_len=1024):
     tokenizer_name = "mistralai/Mistral-7B-v0.1"
     try:
