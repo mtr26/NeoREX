@@ -6,7 +6,7 @@ import os
 def run_benchmarks():
     models = ["rex", "neorex"]
     optimizers = ["adam", "muon"]
-    steps = 2500 # 2500 steps * 4096 tokens/step = ~10.2M tokens
+    steps = 1500 # 1500 steps * 4096 tokens/step = ~6.1M tokens
     
     # 50M tokens with batch size 4 and seq len 1024 is ~12,207 steps.
     # For a quick local benchmark run, we default to 50 steps.
