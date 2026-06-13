@@ -34,12 +34,47 @@ def get_dataloader(vocab_size, batch_size=4, seq_len=1024):
 
 class Muon(torch.optim.Optimizer):
     """
-    Muon optimizer implementation (DeepSeek V4 inspired).
-    Uses momentum and orthogonalization. (Simplified version for 500M model).
+    Muon optimizer (Orthogonalized Momentum).
+    Uses Newton-Schulz iteration for approximate orthogonalization of gradients.
+    Only applies orthogonalization to 2D weight matrices of manageable size.
+    Embeddings and very large matrices fall back to standard momentum SGD.
     """
-    def __init__(self, params, lr=0.02, momentum=0.95):
-        defaults = dict(lr=lr, momentum=momentum)
+    # Max matrix dimension for orthogonalization — skip huge embeddings/LM heads
+    ORTHO_MAX_DIM = 8192
+
+    def __init__(self, params, lr=0.02, momentum=0.95, ns_iters=3):
+        defaults = dict(lr=lr, momentum=momentum, ns_iters=ns_iters)
         super().__init__(params, defaults)
+
+    @staticmethod
+    def _newton_schulz(G, ns_iters=3):
+        """
+        Approximate orthogonalization using Newton-Schulz iteration.
+        Operates on the smaller side: if G is (m, n) with m > n, we work
+        with G^T @ G (n×n) instead of G @ G^T (m×m).
+        """
+        a, b, c = (3.4445, -4.7750, 2.0315)  # Optimal coefficients from Bernstein et al.
+        m, n = G.shape
+        transpose = False
+        if m < n:
+            G = G.T
+            m, n = G.shape
+            transpose = True
+
+        # Normalize so spectral norm ~ 1
+        G = G / (G.norm() + 1e-7)
+
+        # Newton-Schulz iterations using the fused polynomial form:
+        # X_{k+1} = a * X_k + b * X_k @ (X_k^T @ X_k) + c * X_k @ (X_k^T @ X_k) @ (X_k^T @ X_k)
+        # This avoids ever materializing the large m×m matrix.
+        X = G
+        for _ in range(ns_iters):
+            A = X.T @ X       # (n, n) — small!
+            X = a * X + b * (X @ A) + c * (X @ (A @ A))
+
+        if transpose:
+            X = X.T
+        return X
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -49,24 +84,28 @@ class Muon(torch.optim.Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
+            lr = group['lr']
+            momentum = group['momentum']
+            ns_iters = group['ns_iters']
+
             for p in group['params']:
                 if p.grad is None:
                     continue
+
                 g = p.grad
-                if g.ndim > 1: # Only apply orthogonalization to >= 2D tensors (weights)
-                    # Simplified Newton-Schulz orthogonalization
-                    x = g / (g.norm() + 1e-8)
-                    for _ in range(5):
-                        x = 1.5 * x - 0.5 * x @ x.T @ x
-                    g = x * (max(g.shape[0], g.shape[1]) ** 0.5)
+
+                # Only orthogonalize 2D weight matrices of reasonable size
+                if g.ndim >= 2 and max(g.shape) <= self.ORTHO_MAX_DIM:
+                    g = self._newton_schulz(g, ns_iters)
+                    g = g * (max(g.shape[0], g.shape[1]) ** 0.5)
 
                 state = self.state[p]
                 if 'momentum_buffer' not in state:
                     state['momentum_buffer'] = torch.zeros_like(g)
                 buf = state['momentum_buffer']
-                buf.mul_(group['momentum']).add_(g)
-                
-                p.add_(buf, alpha=-group['lr'])
+                buf.mul_(momentum).add_(g)
+
+                p.add_(buf, alpha=-lr)
         return loss
 
 def train():
