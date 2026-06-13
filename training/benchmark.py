@@ -12,7 +12,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from model.neorex import NeoRexConfig, NeoRexForCausalLM
-from model import REXConfig, REX
+from model.rexmodel import REXConfig, REX
 
 class TelemetryCallback(TrainerCallback):
     def __init__(self, log_file):
