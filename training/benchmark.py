@@ -152,7 +152,8 @@ def main():
         learning_rate=1e-3 if args.optimizer == "muon" else 3e-4,
         bf16=torch.cuda.is_bf16_supported(),
         dataloader_num_workers=2,
-        report_to="none"
+        report_to="none",
+        remove_unused_columns=False,  # torch.compile wraps the model and hides the forward signature
     )
 
     trainer = BenchmarkTrainer(
