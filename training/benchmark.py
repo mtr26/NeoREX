@@ -145,7 +145,8 @@ def main():
         model = model.to("cuda")
         
     try:
-        model = torch.compile(model, mode="max-autotune")
+        #model = torch.compile(model, mode="max-autotune")
+        pass
     except Exception as e:
         print(f"Compilation failed, running eager: {e}")
 
