@@ -160,7 +160,9 @@ def main():
         bf16=torch.cuda.is_bf16_supported(),
         dataloader_num_workers=2,
         report_to="none",
-        remove_unused_columns=False,  # torch.compile wraps the model and hides the forward signature
+        remove_unused_columns=False,  # torch.compile wraps the model and hides the forward signature,
+        torch_compile=True,                      
+        torch_compile_mode="default"
     )
 
     trainer = BenchmarkTrainer(
