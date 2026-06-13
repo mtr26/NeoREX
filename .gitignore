@@ -1,0 +1,99 @@
+# ==============================================================================
+# NeoREX Gitignore
+# ==============================================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Virtual Environments ---
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# --- Testing & Code Quality ---
+.pytest_cache/
+.deepeval/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# --- IDEs & Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# --- OS Specific ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# --- Datasets & Cached Downloads ---
+data/
+datasets/
+.cache/
+huggingface_cache/
+*.tar.gz
+*.zip
+
+# --- Training Outputs, Checkpoints & Models ---
+checkpoints/
+outputs/
+results/
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+*.onnx
+
+# --- Telemetry & Experiment Tracking ---
+mlruns/
+mlflow.db
+wandb/
+runs/
+logs/
+benchmark_results/
+benchmark_output/
+*.png
+*.csv
