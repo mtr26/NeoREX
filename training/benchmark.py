@@ -7,11 +7,11 @@ import torch.nn as nn
 from transformers import Trainer, TrainingArguments, TrainerCallback, AutoTokenizer
 from datasets import load_dataset
 
-from model.neorex import NeoRexConfig, NeoRexForCausalLM
 import sys
+# Add project root directory to path to resolve local model/training packages
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Import original REX
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from model.neorex import NeoRexConfig, NeoRexForCausalLM
 from model import REXConfig, REX
 
 class TelemetryCallback(TrainerCallback):
