@@ -15,7 +15,7 @@ def config():
         n_heads=4,
         latent_dim=64,
         mlp_hidden=512,
-        sliding_window=1024,
+        sliding_window=8,  # Must be < test seq_len=10 for SWA to function correctly
         mtp_depth=3,
         tie_word_embeddings=True
     )
@@ -52,16 +52,18 @@ def test_mtp_loss_trainer(config):
     loss_fct = torch.nn.CrossEntropyLoss()
     main_loss = loss_fct(shift_logits.view(-1, config.vocab_size), shift_labels.view(-1))
     
-    mtp_loss = 0.0
+    # MTP auxiliary weight is 0.1 (DeepSeek V3 convention).
+    # Each head contributes 0.1 * its individual loss (NOT accumulated first).
+    expected_loss = main_loss
     for i, mtp_head in enumerate(model.mtp_heads):
         shift_amount = i + 2
         m_logits = mtp_head(hidden_states)[..., :-shift_amount, :].contiguous()
         m_labels = labels[..., shift_amount:].contiguous()
-        mtp_loss += loss_fct(m_logits.view(-1, config.vocab_size), m_labels.view(-1))
-        
-    expected_loss = main_loss + mtp_loss * 0.5
-    
-    assert torch.allclose(loss, expected_loss), "MTP loss calculation is incorrect"
+        expected_loss = expected_loss + loss_fct(m_logits.view(-1, config.vocab_size), m_labels.view(-1)) * 0.1
+
+    assert torch.allclose(loss, expected_loss, atol=1e-4), (
+        f"MTP loss mismatch: got {loss.item():.4f}, expected {expected_loss.item():.4f}"
+    )
 
 if __name__ == "__main__":
     pytest.main([__file__])

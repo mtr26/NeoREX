@@ -400,13 +400,10 @@ class NeoRexForCausalLM(PreTrainedModel, GenerationMixin):
                         mtp_logits = mtp_head(hidden_states)[..., :-shift_amount, :].contiguous()
                         mtp_labels = labels[..., shift_amount:].contiguous()
                         mtp_loss = loss_fct(mtp_logits.view(-1, self.config.vocab_size), mtp_labels.view(-1))
-                        # Weight the MTP loss (e.g. equally or discounted)
-                        loss += mtp_loss * 0.5 
-            
-            # Scale the total loss down so it aligns with standard single-token loss magnitudes
-            # This avoids artificially inflating the displayed loss due to the auxiliary heads!
-            if self.mtp_depth > 0:
-                loss = loss / (1.0 + self.mtp_depth * 0.5)
+                        # Small auxiliary weight (0.1) so MTP guides representations
+                        # without dominating the primary NTP objective.
+                        # DeepSeek V3 uses 0.1; 0.5 was over-weighting and poisoning gradients.
+                        loss = loss + mtp_loss * 0.1
             
         if not return_dict:
             return (loss, logits, next_cache) if loss is not None else (logits, next_cache)

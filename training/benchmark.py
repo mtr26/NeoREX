@@ -4,7 +4,7 @@ import os
 import csv
 import torch
 import torch.nn as nn
-from transformers import Trainer, TrainingArguments, TrainerCallback, AutoTokenizer
+from transformers import Trainer, TrainingArguments, AutoTokenizer
 from datasets import load_dataset
 
 import sys
@@ -14,45 +14,22 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from model.neorex import NeoRexConfig, NeoRexForCausalLM
 from model.rexmodel import REXConfig, REX
 
-class TelemetryCallback(TrainerCallback):
-    def __init__(self, log_file):
-        self.log_file = log_file
-        self.start_time = None
-        
-        # Write header
-        if not os.path.exists(self.log_file):
-            with open(self.log_file, "w", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow(["step", "loss", "vram_mb", "tokens_per_sec"])
-
-    def on_step_begin(self, args, state, control, **kwargs):
-        self.start_time = time.time()
-
-    def on_step_end(self, args, state, control, **kwargs):
-        if self.start_time is None:
-            return
-            
-        step_time = time.time() - self.start_time
-        # Reset memory tracking for peak estimation
-        vram_mb = torch.cuda.max_memory_allocated() / (1024 * 1024) if torch.cuda.is_available() else 0
-        torch.cuda.reset_peak_memory_stats() if torch.cuda.is_available() else None
-        
-        # Calculate tokens per sec
-        batch_size = args.per_device_train_batch_size
-        seq_len = 1024 # Hardcoded for benchmark
-        tokens_per_sec = (batch_size * seq_len) / step_time
-        
-        loss = state.log_history[-1].get("loss", None) if state.log_history else None
-        
-        if loss is not None:
-            with open(self.log_file, "a", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow([state.global_step, loss, vram_mb, tokens_per_sec])
+SEQ_LEN = 1024  # Benchmark sequence length
 
 class BenchmarkTrainer(Trainer):
-    def __init__(self, optimizer_name="adam", *args, **kwargs):
+    """Trainer subclass that captures real per-step telemetry directly
+    inside training_step, where the loss tensor is actually available.
+    This replaces the broken TelemetryCallback that read from stale log_history.
+    """
+    def __init__(self, optimizer_name="adam", csv_path=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.optimizer_name = optimizer_name
+        self.csv_path = csv_path
+
+        # Write CSV header once
+        if csv_path:
+            with open(csv_path, "w", newline="") as f:
+                csv.writer(f).writerow(["step", "loss", "vram_mb", "tokens_per_sec"])
 
     def create_optimizer(self):
         if self.optimizer_name == "muon":
@@ -63,11 +40,40 @@ class BenchmarkTrainer(Trainer):
         return self.optimizer
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        # Newer HF Trainer passes num_items_in_batch, but our models don't accept it.
+        # Strip num_items_in_batch — newer HF Trainer passes it but our models don't accept it.
         inputs.pop("num_items_in_batch", None)
         outputs = model(**inputs)
         loss = outputs.loss
         return (loss, outputs) if return_outputs else loss
+
+    def training_step(self, model, inputs, num_items_in_batch=None):
+        """Override to time each step and capture the real loss tensor value
+        before it is detached and averaged by the parent class internals.
+        """
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+        t0 = time.perf_counter()
+
+        loss = super().training_step(model, inputs, num_items_in_batch)
+
+        step_time = time.perf_counter() - t0
+        tokens_per_sec = (self.args.per_device_train_batch_size * SEQ_LEN) / step_time
+        vram_mb = (
+            torch.cuda.max_memory_allocated() / (1024 * 1024)
+            if torch.cuda.is_available() else 0.0
+        )
+
+        if self.csv_path:
+            # loss is already scaled by grad_accum inside super(); with
+            # gradient_accumulation_steps=1 (default) it equals the raw loss.
+            with open(self.csv_path, "a", newline="") as f:
+                csv.writer(f).writerow([
+                    self.state.global_step,
+                    round(loss.item() * self.args.gradient_accumulation_steps, 6),
+                    round(vram_mb, 3),
+                    round(tokens_per_sec, 2),
+                ])
+        return loss
 
 def get_real_dataset(seq_len=1024):
     tokenizer_name = "mistralai/Mistral-7B-v0.1"
@@ -133,7 +139,7 @@ def main():
             n_heads=20,
             latent_dim=256,
             mlp_hidden=3456,
-            sliding_window=1024,
+            sliding_window=256,  # Must be < seq_len=1024 for SWA to actually restrict attention
             mtp_depth=3,
             tie_word_embeddings=True
         )
@@ -169,12 +175,11 @@ def main():
 
     trainer = BenchmarkTrainer(
         optimizer_name=args.optimizer,
+        csv_path=args.csv_out,
         model=model,
         args=training_args,
         train_dataset=dataset,
     )
-    
-    trainer.add_callback(TelemetryCallback(args.csv_out))
     
     trainer.train()
 
