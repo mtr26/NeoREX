@@ -70,7 +70,7 @@ def get_real_dataset(seq_len=1024):
         # Fallback to an un-gated equivalent if the user hasn't authenticated HF CLI
         tokenizer = AutoTokenizer.from_pretrained("HuggingFaceH4/zephyr-7b-beta")
         
-    dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+    dataset = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="train")
     
     def tokenize_function(examples):
         return tokenizer(examples["text"])
