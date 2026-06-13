@@ -403,6 +403,11 @@ class NeoRexForCausalLM(PreTrainedModel, GenerationMixin):
                         # Weight the MTP loss (e.g. equally or discounted)
                         loss += mtp_loss * 0.5 
             
+            # Scale the total loss down so it aligns with standard single-token loss magnitudes
+            # This avoids artificially inflating the displayed loss due to the auxiliary heads!
+            if self.mtp_depth > 0:
+                loss = loss / (1.0 + self.mtp_depth * 0.5)
+            
         if not return_dict:
             return (loss, logits, next_cache) if loss is not None else (logits, next_cache)
             
