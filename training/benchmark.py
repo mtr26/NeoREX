@@ -156,7 +156,7 @@ def main():
         output_dir="./benchmark_output",
         per_device_train_batch_size=4,
         max_steps=args.steps,
-        logging_steps=1,
+        logging_steps=100,
         save_strategy="no",
         learning_rate=1e-3 if args.optimizer == "muon" else 3e-4,
         bf16=torch.cuda.is_bf16_supported(),
