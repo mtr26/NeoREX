@@ -109,7 +109,7 @@ def main():
         # Configure REX to ~510M parameters
         config = REXConfig(
             vocab_size=vocab_size,
-            d_model=1280,
+            n_embd=1280,
             n_layers=20, # 20 layers for classic REX gives ~510M
             n_heads=20,
             n_kv_heads=4,
